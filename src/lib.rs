@@ -1,10 +1,12 @@
+mod callable;
 mod context;
-pub mod externals;
-pub mod instance;
-pub mod module;
-pub mod runtime;
-pub mod types;
-pub mod values;
+mod externals;
+mod instance;
+mod module;
+mod runtime;
+mod trap;
+mod types;
+mod values;
 
 #[macro_use]
 extern crate failure_derive;

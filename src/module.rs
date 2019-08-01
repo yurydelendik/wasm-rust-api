@@ -1,17 +1,13 @@
-use crate::externals::Extern;
 use crate::runtime::Store;
 use crate::types::{
-    ExportType, ExternType, FuncType, GlobalType, ImportType, Limits, MemoryType, Mutability, Name,
+    ExportType, ExternType, FuncType, GlobalType, ImportType, Limits, MemoryType, Mutability,
     ValType,
 };
 use failure::Error;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use wasmparser::{
-    validate, ExportSectionReader, ExternalKind, ImportSectionEntryType, ImportSectionReader,
-    ModuleReader, SectionCode,
-};
+use wasmparser::{validate, ExternalKind, ImportSectionEntryType, ModuleReader, SectionCode};
 
 fn into_memory_type(mt: wasmparser::MemoryType) -> MemoryType {
     assert!(!mt.shared);

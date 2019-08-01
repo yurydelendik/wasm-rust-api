@@ -2,14 +2,12 @@ use crate::context::Context;
 use crate::externals::Extern;
 use crate::module::Module;
 use crate::runtime::Store;
-use crate::types::{ExportType, ImportType};
 use failure::Error;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 use std::rc::Rc;
 
-use wasmtime_jit::{instantiate, Compiler, Resolver};
+use wasmtime_jit::{instantiate, Resolver};
 use wasmtime_runtime::{Export, InstanceHandle};
 
 struct SimpleResolver {

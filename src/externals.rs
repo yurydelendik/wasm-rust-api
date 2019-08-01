@@ -1,13 +1,11 @@
+use crate::callable::{Callable, WasmtimeFn};
 use crate::runtime::Store;
+use crate::trap::Trap;
 use crate::types::{ExternType, FuncType, GlobalType, MemoryType};
 use crate::values::Val;
-use core::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::result::Result;
-
-use cranelift_codegen::ir;
-use wasmtime_runtime::{VMContext, VMFunctionBody};
 
 // Externals
 
@@ -61,7 +59,6 @@ impl Extern {
         export: wasmtime_runtime::Export,
     ) -> Extern {
         use cranelift_wasm::GlobalInit;
-        use wasmtime_runtime::Export::*;
         match export {
             wasmtime_runtime::Export::Function {
                 address,
@@ -69,7 +66,7 @@ impl Extern {
                 signature,
             } => {
                 let ty = FuncType::from_cranelift_signature(signature.clone());
-                let callable = WasmtimeFn(store.clone(), signature, address, vmctx);
+                let callable = WasmtimeFn::new(store.clone(), signature, address, vmctx);
                 let f = Func::new(store, ty, Box::new(callable));
                 Extern::Func(Rc::new(RefCell::new(f)))
             }
@@ -79,7 +76,7 @@ impl Extern {
                 memory,
             } => {
                 let ty = MemoryType::from_cranelift_memory(memory.memory.clone());
-                let m = self::Memory::new(store, ty);
+                let m = Memory::new(store, ty);
                 Extern::Memory(Rc::new(RefCell::new(m)))
             }
             wasmtime_runtime::Export::Global {
@@ -93,90 +90,10 @@ impl Extern {
                     GlobalInit::I64Const(i) => Val::from(i),
                     _ => unimplemented!("from_wasmtime_export initializer"),
                 };
-                Extern::Global(Rc::new(RefCell::new(self::Global::new(store, ty, val))))
+                Extern::Global(Rc::new(RefCell::new(Global::new(store, ty, val))))
             }
             _ => unimplemented!("from_wasmtime_export other"),
         }
-    }
-}
-
-#[derive(Fail, Debug)]
-#[fail(display = "Wasm trap")]
-pub struct Trap;
-
-pub trait Callable: Any {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap>;
-}
-
-struct WasmtimeFn(
-    Rc<RefCell<Store>>,
-    ir::Signature,
-    *const VMFunctionBody,
-    *mut VMContext,
-);
-
-impl Callable for WasmtimeFn {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap> {
-        use core::cmp::max;
-        use core::{mem, ptr};
-
-        let mut store = self.0.borrow_mut();
-        let signature = &self.1;
-        let address = self.2;
-        let callee_vmctx = self.3;
-
-        let context = store.context();
-        let value_size = mem::size_of::<u64>();
-        let mut values_vec: Vec<u64> = vec![0; max(params.len(), results.len())];
-
-        // Store the argument values into `values_vec`.
-        for (index, arg) in params.iter().enumerate() {
-            unsafe {
-                let ptr = values_vec.as_mut_ptr().add(index);
-
-                match arg {
-                    Val::I32(x) => ptr::write(ptr as *mut i32, *x),
-                    Val::I64(x) => ptr::write(ptr as *mut i64, *x),
-                    // Val::F32(x) => ptr::write(ptr as *mut u32, *x),
-                    // Val::F64(x) => ptr::write(ptr as *mut u64, *x),
-                    _ => unimplemented!("WasmtimeFn arg"),
-                }
-            }
-        }
-
-        // Get the trampoline to call for this function.
-        let exec_code_buf = context
-            .compiler()
-            .get_published_trampoline(address, signature, value_size)
-            .map_err(|_| Trap)?; //was ActionError::Setup)?;
-
-        // Call the trampoline.
-        if let Err(message) = unsafe {
-            wasmtime_runtime::wasmtime_call_trampoline(
-                callee_vmctx,
-                exec_code_buf,
-                values_vec.as_mut_ptr() as *mut u8,
-            )
-        } {
-            return Err(Trap); //Ok(ActionOutcome::Trapped { message });
-        }
-
-        // Load the return values out of `values_vec`.
-        for (index, abi_param) in signature.returns.iter().enumerate() {
-            unsafe {
-                let ptr = values_vec.as_ptr().add(index);
-
-                results[index] = match abi_param.value_type {
-                    ir::types::I32 => Val::from(ptr::read(ptr as *const i32)),
-                    ir::types::I64 => Val::from(ptr::read(ptr as *const i64)),
-                    //ir::types::F32 => RuntimeValue::F32(ptr::read(ptr as *const u32)),
-                    //ir::types::F64 => RuntimeValue::F64(ptr::read(ptr as *const u64)),
-                    other => panic!("unsupported value type {:?}", other),
-                }
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -212,8 +129,7 @@ impl Func {
     }
 
     pub fn call(&self, params: &[Val]) -> Result<Box<[Val]>, Trap> {
-        let mut results = Vec::new();
-        results.resize(self.result_arity(), Val::default());
+        let mut results = vec![Val::default(); self.result_arity()];
         self.callable.call(params, &mut results)?;
         Ok(results.into_boxed_slice())
     }
