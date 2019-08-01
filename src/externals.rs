@@ -147,11 +147,8 @@ impl Callable for WasmtimeFn {
         // Get the trampoline to call for this function.
         let exec_code_buf = context
             .compiler()
-            .get_trampoline(address, signature, value_size)
+            .get_published_trampoline(address, signature, value_size)
             .map_err(|_| Trap)?; //was ActionError::Setup)?;
-
-        // Make all JIT code produced thus far executable.
-        context.compiler().publish_compiled_code();
 
         // Call the trampoline.
         if let Err(message) = unsafe {
