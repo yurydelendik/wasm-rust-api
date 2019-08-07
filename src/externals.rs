@@ -200,7 +200,7 @@ impl Memory {
         &self.r#type
     }
 
-    pub unsafe fn data(&self) -> *const u8 {
+    pub fn data(&self) -> *const u8 {
         unimplemented!("Memory::data")
     }
 

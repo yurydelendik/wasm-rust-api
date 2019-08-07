@@ -36,12 +36,7 @@ impl Hash for Context {
     where
         H: Hasher,
     {
-        unsafe {
-            let ptr = Rc::into_raw(self.compiler.clone());
-            let _ = Rc::from_raw(ptr);
-            ptr
-        }
-        .hash(state)
+        self.compiler.as_ptr().hash(state)
     }
 }
 

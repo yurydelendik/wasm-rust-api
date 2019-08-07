@@ -1,13 +1,11 @@
 use failure::Error;
 use std::cell::RefCell;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::PathBuf;
+use std::fs::read;
 use std::rc::Rc;
 use wasm_rust_api::*;
 
 fn main() -> Result<(), Error> {
-    let wasm = read_binary("gcd.wasm")?;
+    let wasm = read("gcd.wasm")?;
     let engine = Rc::new(RefCell::new(Engine::default()));
     let store = Rc::new(RefCell::new(Store::new(engine)));
     let module = Rc::new(RefCell::new(Module::new(store.clone(), &wasm)?));
@@ -24,14 +22,7 @@ fn main() -> Result<(), Error> {
         .borrow()
         .func()
         .clone();
-    let result = gcd.borrow().call(&[Val::from(6i32), Val::from(27i32)]);
+    let result = gcd.borrow().call(&[Val::from(6i32), Val::from(27i32)])?;
     println!("{:?}", result);
     Ok(())
-}
-
-fn read_binary(path: &str) -> Result<Vec<u8>, Error> {
-    let path = PathBuf::from(path);
-    let mut buf: Vec<u8> = Vec::new();
-    File::open(path)?.read_to_end(&mut buf)?;
-    Ok(buf)
 }

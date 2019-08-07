@@ -2,7 +2,6 @@ use crate::callable::Callable;
 use crate::types::ValType;
 use std::cell::RefCell;
 use std::fmt;
-use std::mem;
 use std::rc::Rc;
 
 use cranelift_codegen::ir;
@@ -81,13 +80,13 @@ impl From<i64> for Val {
 
 impl From<f32> for Val {
     fn from(val: f32) -> Val {
-        Val::F32(unsafe { mem::transmute(val) })
+        Val::F32(val.to_bits())
     }
 }
 
 impl From<f64> for Val {
     fn from(val: f64) -> Val {
-        Val::F64(unsafe { mem::transmute(val) })
+        Val::F64(val.to_bits())
     }
 }
 
