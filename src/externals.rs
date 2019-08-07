@@ -7,6 +7,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::result::Result;
 
+use crate::trampoline::generate_func_export;
+use wasmtime_runtime::InstanceHandle;
 // Externals
 
 pub enum Extern {
@@ -51,11 +53,20 @@ impl Extern {
     }
 
     pub(crate) fn get_wasmtime_export(&mut self) -> wasmtime_runtime::Export {
-        unimplemented!("get_wasmtime_export")
+        match self {
+            Extern::Func(f) => {
+                if f.borrow().anchor.is_none() {
+                    generate_func_export(&f).expect("generate_func_export");
+                }
+                f.borrow().anchor.as_ref().unwrap().1.clone()
+            }
+            _ => unimplemented!("get_wasmtime_export"),
+        }
     }
 
     pub(crate) fn from_wasmtime_export(
         store: Rc<RefCell<Store>>,
+        instance_handle: InstanceHandle,
         export: wasmtime_runtime::Export,
     ) -> Extern {
         use cranelift_wasm::GlobalInit;
@@ -63,16 +74,17 @@ impl Extern {
             wasmtime_runtime::Export::Function {
                 address,
                 vmctx,
-                signature,
+                ref signature,
             } => {
                 let ty = FuncType::from_cranelift_signature(signature.clone());
-                let callable = WasmtimeFn::new(store.clone(), signature, address, vmctx);
-                let f = Func::new(store, ty, Box::new(callable));
+                let callable = WasmtimeFn::new(store.clone(), signature.clone(), address, vmctx);
+                let mut f = Func::new(store, ty, Rc::new(callable));
+                f.anchor = Some((instance_handle, export.clone()));
                 Extern::Func(Rc::new(RefCell::new(f)))
             }
             wasmtime_runtime::Export::Memory {
-                definition,
-                vmctx,
+                definition: _,
+                vmctx: _,
                 memory,
             } => {
                 let ty = MemoryType::from_cranelift_memory(memory.memory.clone());
@@ -80,8 +92,8 @@ impl Extern {
                 Extern::Memory(Rc::new(RefCell::new(m)))
             }
             wasmtime_runtime::Export::Global {
-                definition,
-                vmctx,
+                definition: _,
+                vmctx: _,
                 global,
             } => {
                 let ty = GlobalType::from_cranelift_global(global.clone());
@@ -98,17 +110,23 @@ impl Extern {
 }
 
 pub struct Func {
-    store: Rc<RefCell<Store>>,
-    callable: Box<dyn Callable + 'static>,
+    _store: Rc<RefCell<Store>>,
+    callable: Rc<dyn Callable + 'static>,
     r#type: FuncType,
+    pub(crate) anchor: Option<(InstanceHandle, wasmtime_runtime::Export)>,
 }
 
 impl Func {
-    pub fn new(store: Rc<RefCell<Store>>, r#type: FuncType, callable: Box<Callable>) -> Func {
+    pub fn new(
+        store: Rc<RefCell<Store>>,
+        r#type: FuncType,
+        callable: Rc<dyn Callable + 'static>,
+    ) -> Func {
         Func {
-            store,
+            _store: store,
             callable,
             r#type,
+            anchor: None,
         }
     }
 
@@ -136,14 +154,18 @@ impl Func {
 }
 
 pub struct Global {
-    store: Rc<RefCell<Store>>,
+    _store: Rc<RefCell<Store>>,
     r#type: GlobalType,
     val: Val,
 }
 
 impl Global {
     pub fn new(store: Rc<RefCell<Store>>, r#type: GlobalType, val: Val) -> Global {
-        Global { store, r#type, val }
+        Global {
+            _store: store,
+            r#type,
+            val,
+        }
     }
 
     pub fn r#type(&self) -> &GlobalType {
@@ -162,13 +184,16 @@ impl Global {
 pub struct Table;
 
 pub struct Memory {
-    store: Rc<RefCell<Store>>,
+    _store: Rc<RefCell<Store>>,
     r#type: MemoryType,
 }
 
 impl Memory {
     pub fn new(store: Rc<RefCell<Store>>, r#type: MemoryType) -> Memory {
-        Memory { store, r#type }
+        Memory {
+            _store: store,
+            r#type,
+        }
     }
 
     pub fn r#type(&self) -> &MemoryType {
@@ -187,7 +212,7 @@ impl Memory {
         unimplemented!("Memory::size")
     }
 
-    pub fn grow(&mut self, delta: u32) -> bool {
+    pub fn grow(&mut self, _delta: u32) -> bool {
         unimplemented!("Memory::grow")
     }
 }

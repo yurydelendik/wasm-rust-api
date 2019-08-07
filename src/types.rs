@@ -42,17 +42,27 @@ pub enum ValType {
 }
 
 impl ValType {
-    fn is_num(&self) -> bool {
+    pub fn is_num(&self) -> bool {
         match self {
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 => true,
             _ => false,
         }
     }
 
-    fn is_ref(&self) -> bool {
+    pub fn is_ref(&self) -> bool {
         match self {
             ValType::AnyRef | ValType::FuncRef => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn get_cranelift_type(&self) -> ir::Type {
+        match self {
+            ValType::I32 => ir::types::I32,
+            ValType::I64 => ir::types::I64,
+            ValType::F32 => ir::types::F32,
+            ValType::F64 => ir::types::F64,
+            _ => unimplemented!("get_cranelift_type other"),
         }
     }
 
@@ -114,11 +124,36 @@ fn from_cranelift_abiparam(param: &ir::AbiParam) -> ValType {
 pub struct FuncType {
     params: Box<[ValType]>,
     results: Box<[ValType]>,
+    signature: ir::Signature,
 }
 
 impl FuncType {
     pub fn new(params: Box<[ValType]>, results: Box<[ValType]>) -> FuncType {
-        FuncType { params, results }
+        let signature: ir::Signature = {
+            use cranelift_codegen::ir::*;
+            use cranelift_codegen::isa::CallConv;
+
+            let mut params = params
+                .iter()
+                .map(|p| AbiParam::new(p.get_cranelift_type()))
+                .collect::<Vec<_>>();
+            let returns = results
+                .iter()
+                .map(|p| AbiParam::new(p.get_cranelift_type()))
+                .collect::<Vec<_>>();
+            params.insert(0, AbiParam::special(types::I64, ArgumentPurpose::VMContext));
+
+            Signature {
+                params,
+                returns,
+                call_conv: CallConv::SystemV,
+            }
+        };
+        FuncType {
+            params,
+            results,
+            signature,
+        }
     }
     pub fn params(&self) -> &[ValType] {
         &self.params
@@ -127,14 +162,18 @@ impl FuncType {
         &self.results
     }
 
-    pub(crate) fn from_cranelift_signature(sig: ir::Signature) -> FuncType {
-        let params = sig
+    pub(crate) fn get_cranelift_signature(&self) -> &ir::Signature {
+        &self.signature
+    }
+
+    pub(crate) fn from_cranelift_signature(signature: ir::Signature) -> FuncType {
+        let params = signature
             .params
             .iter()
             .filter(|p| p.purpose == ir::ArgumentPurpose::Normal)
             .map(|p| from_cranelift_abiparam(p))
             .collect::<Vec<_>>();
-        let results = sig
+        let results = signature
             .returns
             .iter()
             .map(|p| from_cranelift_abiparam(p))
@@ -142,6 +181,7 @@ impl FuncType {
         FuncType {
             params: params.into_boxed_slice(),
             results: results.into_boxed_slice(),
+            signature,
         }
     }
 }

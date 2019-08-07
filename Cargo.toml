@@ -6,11 +6,16 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "wasm_rust_api"
+crate-type = ["staticlib", "cdylib"]
+
 [dependencies]
 cranelift-codegen = "0.36.0"
 cranelift-native = "0.36.0"
 cranelift-entity = "0.36.0"
 cranelift-wasm = "0.36.0"
+cranelift-frontend = "0.36.0"
 wasmtime-runtime = { path="../wasmtime/wasmtime-runtime" }
 wasmtime-environ = { path="../wasmtime/wasmtime-environ" }
 wasmtime-jit = { path="../wasmtime/wasmtime-jit" }
@@ -20,5 +25,7 @@ wasmtime-jit = { path="../wasmtime/wasmtime-jit" }
 wasmparser = "0.34"
 failure = { version = "0.1.3", default-features = false }
 failure_derive = { version = "0.1.3", default-features = false }
+target-lexicon = { version = "0.4.0", default-features = false }
+region = "2.0.0"
 
 [patch.crates-io]

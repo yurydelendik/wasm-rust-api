@@ -11,15 +11,15 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(compiler: Compiler) -> Context {
+    pub fn new(compiler: Compiler, debug_info: bool) -> Context {
         Context {
             compiler: Rc::new(RefCell::new(compiler)),
-            debug_info: false,
+            debug_info,
         }
     }
 
-    pub fn create() -> Context {
-        Context::new(create_compiler())
+    pub fn create(debug_info: bool) -> Context {
+        Context::new(create_compiler(), debug_info)
     }
 
     pub(crate) fn debug_info(&self) -> bool {

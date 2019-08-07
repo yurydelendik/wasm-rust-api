@@ -5,6 +5,7 @@ use std::fmt;
 use std::mem;
 use std::rc::Rc;
 
+use cranelift_codegen::ir;
 use wasmtime_jit::RuntimeValue;
 
 #[derive(Clone)]
@@ -22,7 +23,7 @@ impl fmt::Debug for AnyRef {
 }
 
 pub struct FuncRef {
-    callable: Box<dyn Callable + 'static>,
+    pub callable: Box<dyn Callable + 'static>,
 }
 
 impl fmt::Debug for FuncRef {
@@ -55,6 +56,14 @@ impl Val {
             Val::AnyRef(_) => ValType::AnyRef,
             Val::FuncRef(_) => ValType::FuncRef,
         }
+    }
+
+    pub(crate) unsafe fn write_value_to(&self, _ptr: *const i64) {
+        unimplemented!("Val::write_value");
+    }
+
+    pub(crate) unsafe fn read_value_from(_ptr: *mut i64, _ty: ir::Type) -> Val {
+        unimplemented!("Val::read_value");
     }
 }
 

@@ -98,7 +98,7 @@ fn read_imports_and_exports(
                             let sig = &sigs[index as usize];
                             ExternType::ExternFunc(sig.clone())
                         }
-                        ImportSectionEntryType::Table(tt) => {
+                        ImportSectionEntryType::Table(_tt) => {
                             unimplemented!("ImportSectionEntryType::Table")
                         }
                         ImportSectionEntryType::Memory(mt) => {
@@ -167,7 +167,7 @@ impl Module {
     pub(crate) fn binary(&self) -> &[u8] {
         &self.binary
     }
-    pub fn validate(store: &Store, binary: &[u8]) -> bool {
+    pub fn validate(_store: &Store, binary: &[u8]) -> bool {
         validate(binary, None)
     }
     pub fn imports(&self) -> &[ImportType] {

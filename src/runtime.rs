@@ -15,6 +15,10 @@ impl Config {
     pub fn default() -> Config {
         Config { debug_info: false }
     }
+
+    pub(crate) fn debug_info(&self) -> bool {
+        self.debug_info
+    }
 }
 
 // Engine
@@ -31,20 +35,25 @@ impl Engine {
     pub fn default() -> Engine {
         Engine::new(Config::default())
     }
+
+    pub(crate) fn config(&self) -> &Config {
+        &self.config
+    }
 }
 
 // Store
 
 pub struct Store {
-    engine: Rc<RefCell<Engine>>,
+    _engine: Rc<RefCell<Engine>>,
     context: Context,
 }
 
 impl Store {
     pub fn new(engine: Rc<RefCell<Engine>>) -> Store {
+        let debug_info = engine.borrow().config().debug_info();
         Store {
-            engine,
-            context: Context::create(),
+            _engine: engine,
+            context: Context::create(debug_info),
         }
     }
 

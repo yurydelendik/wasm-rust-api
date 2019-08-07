@@ -79,6 +79,7 @@ impl Instance {
                 let export = instance_handle.lookup(&name).expect("export");
                 exports.push(Rc::new(RefCell::new(Extern::from_wasmtime_export(
                     store.clone(),
+                    instance_handle.clone(),
                     export,
                 ))));
             }
