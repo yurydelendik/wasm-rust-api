@@ -100,11 +100,16 @@ impl Extern {
                 let val = match global.initializer {
                     GlobalInit::I32Const(i) => Val::from(i),
                     GlobalInit::I64Const(i) => Val::from(i),
+                    GlobalInit::F32Const(f) => Val::from_f32_bits(f),
+                    GlobalInit::F64Const(f) => Val::from_f64_bits(f),
                     _ => unimplemented!("from_wasmtime_export initializer"),
                 };
                 Extern::Global(Rc::new(RefCell::new(Global::new(store, ty, val))))
             }
-            _ => unimplemented!("from_wasmtime_export other"),
+            wasmtime_runtime::Export::Table { .. } => {
+                // TODO Extern::Table(Rc::new(RefCell::new(Table::new(store, ty, val))))
+                Extern::Table(Rc::new(RefCell::new(Table)))
+            }
         }
     }
 }

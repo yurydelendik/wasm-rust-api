@@ -11,18 +11,30 @@ name = "wasm_rust_api"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
-cranelift-codegen = "0.36.0"
-cranelift-native = "0.36.0"
-cranelift-entity = "0.36.0"
-cranelift-wasm = "0.36.0"
-cranelift-frontend = "0.36.0"
-wasmtime-runtime = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
-wasmtime-environ = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
-wasmtime-jit = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
+cranelift-codegen = "0.38.0"
+cranelift-native = "0.38.0"
+cranelift-entity = "0.38.0"
+cranelift-wasm = "0.38.0"
+cranelift-frontend = "0.38.0"
+wasmtime-runtime = { git="https://github.com/CraneStation/wasmtime/", rev="9263b9d" }
+wasmtime-environ = { git="https://github.com/CraneStation/wasmtime/", rev="9263b9d" }
+wasmtime-jit = { git="https://github.com/CraneStation/wasmtime/", rev="9263b9d" }
 wasmparser = "0.34"
 failure = { version = "0.1.3", default-features = false }
 failure_derive = { version = "0.1.3", default-features = false }
 target-lexicon = { version = "0.4.0", default-features = false }
 region = "2.0.0"
+
+[dev-dependencies]
+# for wasmtime.rs
+wasi-common = { git = "https://github.com/CraneStation/wasi-common", rev = "c3994bf57b5d2f1f973b0e4e37bc385695aa4ed2"}
+docopt = "1.0.1"
+serde = { "version" = "1.0.94", features = ["derive"] }
+pretty_env_logger = "0.3.0"
+wabt = "0.9.0"
+wasmtime-wast = { git="https://github.com/CraneStation/wasmtime/", rev="9263b9d" }
+wasmtime-wasi = { git="https://github.com/CraneStation/wasmtime/", rev="9263b9d" }
+rayon = "1.1"
+file-per-thread-logger = "0.1.1"
 
 [patch.crates-io]

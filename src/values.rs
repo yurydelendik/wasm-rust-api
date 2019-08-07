@@ -64,6 +64,14 @@ impl Val {
     pub(crate) unsafe fn read_value_from(_ptr: *mut i64, _ty: ir::Type) -> Val {
         unimplemented!("Val::read_value");
     }
+
+    pub fn from_f32_bits(v: u32) -> Val {
+        Val::F32(v)
+    }
+
+    pub fn from_f64_bits(v: u64) -> Val {
+        Val::F64(v)
+    }
 }
 
 impl From<i32> for Val {

@@ -28,16 +28,16 @@ pub fn instantiate_in_context(
     data: &[u8],
     imports: Vec<(String, String, Rc<RefCell<Extern>>)>,
     mut context: Context,
+    exports: Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>>,
 ) -> Result<(InstanceHandle, HashSet<Context>), Error> {
     let mut contexts = HashSet::new();
     let debug_info = context.debug_info();
     let mut resolver = SimpleResolver { imports };
-    let global_exports = Rc::new(RefCell::new(HashMap::new()));
     let instance = instantiate(
         &mut context.compiler(),
         data,
         &mut resolver,
-        global_exports,
+        exports,
         debug_info,
     )?;
     contexts.insert(context);
@@ -60,6 +60,20 @@ impl Instance {
         module: Rc<RefCell<Module>>,
         externs: &[Rc<RefCell<Extern>>],
     ) -> Result<Instance, Error> {
+        Instance::new_with_exports(
+            store,
+            module,
+            externs,
+            Rc::new(RefCell::new(HashMap::new())),
+        )
+    }
+
+    pub fn new_with_exports(
+        store: Rc<RefCell<Store>>,
+        module: Rc<RefCell<Module>>,
+        externs: &[Rc<RefCell<Extern>>],
+        exports: Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>>,
+    ) -> Result<Instance, Error> {
         let context = store.borrow_mut().context().clone();
         let imports = module
             .borrow()
@@ -69,7 +83,7 @@ impl Instance {
             .map(|(i, e)| (i.module().to_string(), i.name().to_string(), e.clone()))
             .collect::<Vec<_>>();
         let (mut instance_handle, contexts) =
-            instantiate_in_context(module.borrow().binary(), imports, context)?;
+            instantiate_in_context(module.borrow().binary(), imports, context, exports)?;
 
         let exports = {
             let module = module.borrow();
@@ -91,7 +105,42 @@ impl Instance {
             exports,
         })
     }
+
     pub fn exports(&self) -> &[Rc<RefCell<Extern>>] {
         &self.exports
+    }
+
+    pub fn from_handle(
+        store: Rc<RefCell<Store>>,
+        instance_handle: InstanceHandle,
+    ) -> Result<(Instance, HashMap<String, usize>), Error> {
+        let contexts = HashSet::new();
+
+        let mut exports = Vec::new();
+        let mut export_names_map = HashMap::new();
+        let mut mutable = instance_handle.clone();
+        for (name, _) in instance_handle.clone().exports() {
+            let export = mutable.lookup(name).expect("export");
+            export_names_map.insert(name.to_owned(), exports.len());
+            exports.push(Rc::new(RefCell::new(Extern::from_wasmtime_export(
+                store.clone(),
+                instance_handle.clone(),
+                export.clone(),
+            ))));
+        }
+
+        Ok((
+            Instance {
+                instance_handle,
+                contexts,
+                exports: exports.into_boxed_slice(),
+            },
+            export_names_map,
+        ))
+    }
+
+    pub fn get_wasmtime_memory(&self) -> Option<wasmtime_runtime::Export> {
+        let mut instance_handle = self.instance_handle.clone();
+        instance_handle.lookup("memory")
     }
 }
