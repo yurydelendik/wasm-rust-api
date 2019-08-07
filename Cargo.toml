@@ -8,7 +8,7 @@ edition = "2018"
 
 [lib]
 name = "wasm_rust_api"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 cranelift-codegen = "0.36.0"
@@ -16,12 +16,9 @@ cranelift-native = "0.36.0"
 cranelift-entity = "0.36.0"
 cranelift-wasm = "0.36.0"
 cranelift-frontend = "0.36.0"
-wasmtime-runtime = { path="../wasmtime/wasmtime-runtime" }
-wasmtime-environ = { path="../wasmtime/wasmtime-environ" }
-wasmtime-jit = { path="../wasmtime/wasmtime-jit" }
-#wasmtime-runtime = { git="https://github.com/CraneStation/wasmtime/", rev="b7d86af" }
-#wasmtime-environ = { git="https://github.com/CraneStation/wasmtime/", rev="b7d86af" }
-#wasmtime-jit = { git="https://github.com/CraneStation/wasmtime/", rev="b7d86af" }
+wasmtime-runtime = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
+wasmtime-environ = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
+wasmtime-jit = { git="https://github.com/yurydelendik/wasmtime/", branch="published-trampoline" }
 wasmparser = "0.34"
 failure = { version = "0.1.3", default-features = false }
 failure_derive = { version = "0.1.3", default-features = false }
