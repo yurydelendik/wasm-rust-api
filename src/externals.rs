@@ -151,7 +151,7 @@ impl Func {
         self.callable.as_ref()
     }
 
-    pub fn call(&self, params: &[Val]) -> Result<Box<[Val]>, Trap> {
+    pub fn call(&self, params: &[Val]) -> Result<Box<[Val]>, Rc<RefCell<Trap>>> {
         let mut results = vec![Val::default(); self.result_arity()];
         self.callable.call(params, &mut results)?;
         Ok(results.into_boxed_slice())

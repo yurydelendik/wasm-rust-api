@@ -2,7 +2,7 @@
 
 use crate::trampoline::code_memory::CodeMemory;
 use cranelift_codegen::ir::types;
-use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind};
+use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind, TrapCode};
 use cranelift_codegen::Context;
 use cranelift_codegen::{binemit, ir, isa};
 use cranelift_entity::{EntityRef, PrimaryMap};
@@ -18,15 +18,16 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::{Func, Val};
+use crate::{Func, Trap, Val};
 
 struct TrampolineState {
     func: Rc<RefCell<Func>>,
+    trap: Option<Rc<RefCell<Trap>>>,
     #[allow(dead_code)]
     code_memory: CodeMemory,
 }
 
-unsafe extern "C" fn stub_fn(vmctx: *mut VMContext, call_id: u32, values_vec: *mut i64) {
+unsafe extern "C" fn stub_fn(vmctx: *mut VMContext, call_id: u32, values_vec: *mut i64) -> u32 {
     let mut instance = InstanceHandle::from_vmctx(vmctx);
 
     let (args, returns_len) = {
@@ -56,8 +57,17 @@ unsafe extern "C" fn stub_fn(vmctx: *mut VMContext, call_id: u32, values_vec: *m
                 // TODO check signature.returns[i].value_type ?
                 returns[i].write_value_to(values_vec.offset(i as isize));
             }
+            0
         }
-        Err(_) => unimplemented!("stub_fn trap"),
+        Err(trap) => {
+            // TODO read custom exception
+            InstanceHandle::from_vmctx(vmctx)
+                .host_state()
+                .downcast_mut::<TrampolineState>()
+                .expect("state")
+                .trap = Some(trap);
+            1
+        }
     }
 }
 
@@ -85,6 +95,9 @@ fn make_trampoline(
 
     // Add the `values_vec` parameter.
     stub_sig.params.push(ir::AbiParam::new(pointer_type));
+
+    // Add error/trap return.
+    stub_sig.returns.push(ir::AbiParam::new(types::I32));
 
     let values_vec_len = 8 * cmp::max(signature.params.len() - 1, signature.returns.len()) as u32;
 
@@ -132,9 +145,12 @@ fn make_trampoline(
         let callee_value = builder
             .ins()
             .iconst(pointer_type, stub_fn as *const VMFunctionBody as i64);
-        builder
+        let call = builder
             .ins()
             .call_indirect(new_sig, callee_value, &callee_args);
+
+        let call_result = builder.func.dfg.inst_results(call)[0];
+        builder.ins().trapnz(call_result, TrapCode::User(0));
 
         let mflags = ir::MemFlags::trusted();
         let mut results = Vec::new();
@@ -216,6 +232,7 @@ pub fn create_handle(func: &Rc<RefCell<Func>>) -> Result<InstanceHandle, Error> 
 
     let trampoline_state = TrampolineState {
         func: func.clone(),
+        trap: None,
         code_memory,
     };
 

@@ -186,7 +186,7 @@ pub type wasm_message_t = wasm_name_t;
 #[repr(C)]
 #[derive(Clone)]
 pub struct wasm_trap_t {
-    _unused: [u8; 0],
+    trap: Rc<RefCell<Trap>>,
 }
 #[repr(C)]
 #[derive(Clone)]
@@ -313,12 +313,19 @@ pub unsafe extern "C" fn wasm_func_call(
         let val = &(*args.offset(i as isize));
         params.push(val.val());
     }
-    let out = func.call(&params).expect("good call");
-    for i in 0..func.result_arity() {
-        let val = &mut (*results.offset(i as isize));
-        *val = wasm_val_t::from_val(&out[i]);
+    match func.call(&params) {
+        Ok(out) => {
+            for i in 0..func.result_arity() {
+                let val = &mut (*results.offset(i as isize));
+                *val = wasm_val_t::from_val(&out[i]);
+            }
+            ptr::null_mut()
+        }
+        Err(trap) => {
+            let trap = Box::new(wasm_trap_t { trap });
+            Box::into_raw(trap)
+        }
     }
-    ptr::null_mut()
 }
 
 impl wasm_val_t {
@@ -348,7 +355,7 @@ impl wasm_val_t {
 }
 
 impl Callable for wasm_func_callback_t {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap> {
+    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Rc<RefCell<Trap>>> {
         let params = params
             .iter()
             .map(|p| wasm_val_t::from_val(p))
@@ -357,12 +364,19 @@ impl Callable for wasm_func_callback_t {
         let func = self.expect("wasm_func_callback_t fn");
         let out = unsafe { func(params.as_ptr(), out_results.as_mut_ptr()) };
         if out != ptr::null_mut() {
-            panic!("wasm_func_callback_t trap");
+            let trap: Box<wasm_trap_t> = unsafe { Box::from_raw(out) };
+            return Err((*trap).into());
         }
         for i in 0..results.len() {
             results[i] = out_results[i].val();
         }
         Ok(())
+    }
+}
+
+impl Into<Rc<RefCell<Trap>>> for wasm_trap_t {
+    fn into(self) -> Rc<RefCell<Trap>> {
+        self.trap
     }
 }
 
@@ -373,7 +387,7 @@ struct CallbackWithEnv {
 }
 
 impl Callable for CallbackWithEnv {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap> {
+    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Rc<RefCell<Trap>>> {
         let params = params
             .iter()
             .map(|p| wasm_val_t::from_val(p))
@@ -382,7 +396,8 @@ impl Callable for CallbackWithEnv {
         let func = self.callback.expect("wasm_func_callback_with_env_t fn");
         let out = unsafe { func(self.env, params.as_ptr(), out_results.as_mut_ptr()) };
         if out != ptr::null_mut() {
-            panic!("wasm_func_callback_t trap");
+            let trap: Box<wasm_trap_t> = unsafe { Box::from_raw(out) };
+            return Err((*trap).into());
         }
         for i in 0..results.len() {
             results[i] = out_results[i].val();
@@ -613,6 +628,99 @@ pub unsafe extern "C" fn wasm_valtype_vec_new(
     buffer.extend_from_slice(slice);
     assert!(size == buffer.capacity());
     (*out).size = size;
+    (*out).data = buffer.as_mut_ptr();
+    mem::forget(buffer);
+}
+#[no_mangle]
+pub unsafe extern "C" fn wasm_byte_vec_new(
+    out: *mut wasm_byte_vec_t,
+    size: usize,
+    data: *const wasm_byte_t,
+) {
+    let slice = slice::from_raw_parts(data, size);
+    let mut buffer = Vec::with_capacity(size);
+    buffer.extend_from_slice(slice);
+    assert!(size == buffer.capacity());
+    (*out).size = size;
+    (*out).data = buffer.as_mut_ptr();
+    mem::forget(buffer);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_delete(_arg1: *mut wasm_frame_t) {
+    unimplemented!("wasm_frame_delete")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_func_index(_arg1: *const wasm_frame_t) -> u32 {
+    unimplemented!("wasm_frame_func_index")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_func_offset(_arg1: *const wasm_frame_t) -> usize {
+    unimplemented!("wasm_frame_func_offset")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_instance(_arg1: *const wasm_frame_t) -> *mut wasm_instance_t {
+    unimplemented!("wasm_frame_instance")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_module_offset(_arg1: *const wasm_frame_t) -> usize {
+    unimplemented!("wasm_frame_module_offset")
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_frame_vec_delete(frames: *mut wasm_frame_vec_t) {
+    let frames = Vec::from_raw_parts((*frames).data, (*frames).size, (*frames).size);
+    for _frame in frames {
+        unimplemented!("wasm_frame_vec_delete for frame")
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_trap_delete(trap: *mut wasm_trap_t) {
+    let _ = Box::from_raw(trap);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_trap_new(
+    _store: *mut wasm_store_t,
+    message: *const wasm_message_t,
+) -> *mut wasm_trap_t {
+    let message = slice::from_raw_parts((*message).data as *const u8, (*message).size);
+    if message[message.len() - 1] != 0 {
+        panic!("wasm_trap_new message stringz expected");
+    }
+    let message = String::from_utf8_lossy(message).to_string();
+    let trap = Box::new(wasm_trap_t {
+        trap: Rc::new(RefCell::new(Trap::new(message))),
+    });
+    Box::into_raw(trap)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_trap_message(trap: *const wasm_trap_t, out: *mut wasm_message_t) {
+    let mut buffer = Vec::new();
+    buffer.extend_from_slice((*trap).trap.borrow().message().as_bytes());
+    buffer.reserve_exact(1);
+    buffer.push(0);
+    assert!(buffer.len() == buffer.capacity());
+    (*out).size = buffer.capacity();
+    (*out).data = buffer.as_mut_ptr() as *mut i8;
+    mem::forget(buffer);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_trap_origin(_trap: *const wasm_trap_t) -> *mut wasm_frame_t {
+    ptr::null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_trap_trace(_trap: *const wasm_trap_t, out: *mut wasm_frame_vec_t) {
+    let mut buffer = Vec::new();
+    (*out).size = 0;
     (*out).data = buffer.as_mut_ptr();
     mem::forget(buffer);
 }

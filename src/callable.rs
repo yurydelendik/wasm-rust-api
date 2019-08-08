@@ -9,7 +9,7 @@ use cranelift_codegen::ir;
 use wasmtime_runtime::{VMContext, VMFunctionBody};
 
 pub trait Callable: Any {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap>;
+    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Rc<RefCell<Trap>>>;
 }
 
 pub(crate) struct WasmtimeFn {
@@ -35,7 +35,7 @@ impl WasmtimeFn {
     }
 }
 impl Callable for WasmtimeFn {
-    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap> {
+    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Rc<RefCell<Trap>>> {
         use core::cmp::max;
         use core::{mem, ptr};
 
@@ -64,17 +64,17 @@ impl Callable for WasmtimeFn {
         let exec_code_buf = context
             .compiler()
             .get_published_trampoline(self.body, &self.signature, value_size)
-            .map_err(|_| Trap)?; //was ActionError::Setup)?;
+            .map_err(|_| Rc::new(RefCell::new(Trap::fake())))?; //was ActionError::Setup)?;
 
         // Call the trampoline.
-        if let Err(_message) = unsafe {
+        if let Err(message) = unsafe {
             wasmtime_runtime::wasmtime_call_trampoline(
                 self.vmctx,
                 exec_code_buf,
                 values_vec.as_mut_ptr() as *mut u8,
             )
         } {
-            return Err(Trap); //Ok(ActionOutcome::Trapped { message });
+            return Err(Rc::new(RefCell::new(Trap::new(message))));
         }
 
         // Load the return values out of `values_vec`.
