@@ -256,7 +256,7 @@ pub unsafe extern "C" fn wasm_byte_vec_delete(v: *mut wasm_byte_vec_t) {
 
 #[no_mangle]
 pub unsafe extern "C" fn wasm_byte_vec_new_uninitialized(out: *mut wasm_byte_vec_t, size: usize) {
-    let mut buffer = Vec::<byte_t>::with_capacity(size);
+    let mut buffer = vec![0; size];
     let result = out.as_mut().unwrap();
     result.size = buffer.capacity();
     result.data = buffer.as_mut_ptr();
@@ -309,7 +309,7 @@ pub unsafe extern "C" fn wasm_func_call(
 ) -> *mut wasm_trap_t {
     let func = (*func).func.borrow();
     let mut params = Vec::with_capacity(func.param_arity());
-    for i in 0..params.len() {
+    for i in 0..func.param_arity() {
         let val = &(*args.offset(i as isize));
         params.push(val.val());
     }
@@ -322,12 +322,28 @@ pub unsafe extern "C" fn wasm_func_call(
 }
 
 impl wasm_val_t {
-    fn from_val(_val: &Val) -> wasm_val_t {
-        unimplemented!("wasm_val_t::from_val")
+    fn default() -> wasm_val_t {
+        wasm_val_t {
+            kind: 0,
+            of: wasm_val_t__bindgen_ty_1 { i32: 0 },
+        }
+    }
+
+    fn from_val(val: &Val) -> wasm_val_t {
+        match val {
+            Val::I32(i) => wasm_val_t {
+                kind: from_valtype(ValType::I32),
+                of: wasm_val_t__bindgen_ty_1 { i32: *i },
+            },
+            _ => unimplemented!("wasm_val_t::from_val {:?}", val),
+        }
     }
 
     fn val(&self) -> Val {
-        unimplemented!("wasm_val_t::val")
+        match into_valtype(self.kind) {
+            ValType::I32 => Val::from(unsafe { self.of.i32 }),
+            _ => unimplemented!("wasm_val_t::val {:?}", self.kind),
+        }
     }
 }
 
@@ -337,7 +353,7 @@ impl Callable for wasm_func_callback_t {
             .iter()
             .map(|p| wasm_val_t::from_val(p))
             .collect::<Vec<_>>();
-        let mut out_results = Vec::with_capacity(results.len());
+        let mut out_results = vec![wasm_val_t::default(); results.len()];
         let func = self.expect("wasm_func_callback_t fn");
         let out = unsafe { func(params.as_ptr(), out_results.as_mut_ptr()) };
         if out != ptr::null_mut() {
@@ -347,6 +363,41 @@ impl Callable for wasm_func_callback_t {
             results[i] = out_results[i].val();
         }
         Ok(())
+    }
+}
+
+struct CallbackWithEnv {
+    callback: wasm_func_callback_with_env_t,
+    env: *mut ::std::os::raw::c_void,
+    finalizer: ::std::option::Option<unsafe extern "C" fn(env: *mut ::std::os::raw::c_void)>,
+}
+
+impl Callable for CallbackWithEnv {
+    fn call(&self, params: &[Val], results: &mut [Val]) -> Result<(), Trap> {
+        let params = params
+            .iter()
+            .map(|p| wasm_val_t::from_val(p))
+            .collect::<Vec<_>>();
+        let mut out_results = vec![wasm_val_t::default(); results.len()];
+        let func = self.callback.expect("wasm_func_callback_with_env_t fn");
+        let out = unsafe { func(self.env, params.as_ptr(), out_results.as_mut_ptr()) };
+        if out != ptr::null_mut() {
+            panic!("wasm_func_callback_t trap");
+        }
+        for i in 0..results.len() {
+            results[i] = out_results[i].val();
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CallbackWithEnv {
+    fn drop(&mut self) {
+        if let Some(finalizer) = self.finalizer {
+            unsafe {
+                finalizer(self.env);
+            }
+        }
     }
 }
 
@@ -489,4 +540,79 @@ pub unsafe extern "C" fn wasm_store_new(engine: *mut wasm_engine_t) -> *mut wasm
 pub unsafe extern "C" fn wasm_valtype_vec_new_empty(out: *mut wasm_valtype_vec_t) {
     (*out).data = ptr::null_mut();
     (*out).size = 0;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_func_new_with_env(
+    store: *mut wasm_store_t,
+    ty: *const wasm_functype_t,
+    callback: wasm_func_callback_with_env_t,
+    env: *mut ::std::os::raw::c_void,
+    finalizer: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
+) -> *mut wasm_func_t {
+    let store = (*store).store.clone();
+    let ty = (*ty).functype.clone();
+    let callback = Rc::new(CallbackWithEnv {
+        callback,
+        env,
+        finalizer,
+    });
+    let func = Box::new(wasm_func_t {
+        func: Rc::new(RefCell::new(Func::new(store, ty, callback))),
+    });
+    Box::into_raw(func)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_val_copy(out: *mut wasm_val_t, source: *const wasm_val_t) {
+    *out = match into_valtype((*source).kind) {
+        ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 => (*source).clone(),
+        _ => unimplemented!("wasm_val_copy arg"),
+    };
+}
+
+fn into_valtype(kind: wasm_valkind_t) -> ValType {
+    match kind {
+        0 => ValType::I32,
+        1 => ValType::I64,
+        2 => ValType::F32,
+        3 => ValType::F64,
+        128 => ValType::AnyRef,
+        129 => ValType::FuncRef,
+        _ => panic!("unexpected kind: {}", kind),
+    }
+}
+
+fn from_valtype(ty: ValType) -> wasm_valkind_t {
+    match ty {
+        ValType::I32 => 0,
+        ValType::I64 => 1,
+        ValType::F32 => 2,
+        ValType::F64 => 3,
+        ValType::AnyRef => 128,
+        ValType::FuncRef => 129,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_valtype_new(kind: wasm_valkind_t) -> *mut wasm_valtype_t {
+    let ty = Box::new(wasm_valtype_t {
+        ty: into_valtype(kind),
+    });
+    Box::into_raw(ty)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wasm_valtype_vec_new(
+    out: *mut wasm_valtype_vec_t,
+    size: usize,
+    data: *const *mut wasm_valtype_t,
+) {
+    let slice = slice::from_raw_parts(data, size);
+    let mut buffer = Vec::with_capacity(size);
+    buffer.extend_from_slice(slice);
+    assert!(size == buffer.capacity());
+    (*out).size = size;
+    (*out).data = buffer.as_mut_ptr();
+    mem::forget(buffer);
 }
