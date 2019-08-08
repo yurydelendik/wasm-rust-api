@@ -60,21 +60,8 @@ impl Instance {
         module: Rc<RefCell<Module>>,
         externs: &[Rc<RefCell<Extern>>],
     ) -> Result<Instance, Error> {
-        Instance::new_with_exports(
-            store,
-            module,
-            externs,
-            Rc::new(RefCell::new(HashMap::new())),
-        )
-    }
-
-    pub fn new_with_exports(
-        store: Rc<RefCell<Store>>,
-        module: Rc<RefCell<Module>>,
-        externs: &[Rc<RefCell<Extern>>],
-        exports: Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>>,
-    ) -> Result<Instance, Error> {
         let context = store.borrow_mut().context().clone();
+        let exports = store.borrow_mut().global_exports().clone();
         let imports = module
             .borrow()
             .imports()

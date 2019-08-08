@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::context::Context;
@@ -76,6 +77,7 @@ impl Engine {
 pub struct Store {
     _engine: Rc<RefCell<Engine>>,
     context: Context,
+    global_exports: Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>>,
 }
 
 impl Store {
@@ -86,10 +88,18 @@ impl Store {
         Store {
             _engine: engine,
             context: Context::create(flags, features, debug_info),
+            global_exports: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     pub(crate) fn context(&mut self) -> &mut Context {
         &mut self.context
+    }
+
+    // Specific to wasmtime: hack to pass memory around to wasi
+    pub fn global_exports(
+        &self,
+    ) -> &Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>> {
+        &self.global_exports
     }
 }

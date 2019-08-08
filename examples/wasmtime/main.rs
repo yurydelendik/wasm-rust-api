@@ -255,7 +255,7 @@ fn main() {
     );
 
     // Make wasi available by default.
-    let global_exports = Rc::new(RefCell::new(HashMap::new()));
+    let global_exports = store.borrow().global_exports().clone();
     let preopen_dirs = compute_preopen_dirs(&args.flag_dir, &args.flag_mapdir);
     let argv = compute_argv(&args.arg_file, &args.arg_arg);
     let environ = compute_environ(&args.flag_env);
@@ -282,7 +282,7 @@ fn main() {
     // Load the preload wasm modules.
     for filename in &args.flag_preload {
         let path = Path::new(&filename);
-        match handle_module(&store, &module_registry, &global_exports, &args, path) {
+        match handle_module(&store, &module_registry, &args, path) {
             Ok(()) => {}
             Err(message) => {
                 let name = path.as_os_str().to_string_lossy();
@@ -294,7 +294,7 @@ fn main() {
 
     // Load the main wasm module.
     let path = Path::new(&args.arg_file);
-    match handle_module(&store, &module_registry, &global_exports, &args, path) {
+    match handle_module(&store, &module_registry, &args, path) {
         Ok(()) => {}
         Err(message) => {
             let name = path.as_os_str().to_string_lossy();
@@ -307,7 +307,6 @@ fn main() {
 fn handle_module(
     store: &Rc<RefCell<Store>>,
     module_registry: &HashMap<String, (Instance, HashMap<String, usize>)>,
-    global_exports: &Rc<RefCell<HashMap<String, Option<wasmtime_runtime::Export>>>>,
     args: &Args,
     path: &Path,
 ) -> Result<(), String> {
@@ -342,13 +341,7 @@ fn handle_module(
         .collect::<Result<Vec<_>, _>>()?;
 
     let instance = Rc::new(RefCell::new(
-        Instance::new_with_exports(
-            store.clone(),
-            module.clone(),
-            &imports,
-            global_exports.clone(),
-        )
-        .map_err(|e| e.to_string())?,
+        Instance::new(store.clone(), module.clone(), &imports).map_err(|e| e.to_string())?,
     ));
 
     // If a function to invoke was given, invoke it.
