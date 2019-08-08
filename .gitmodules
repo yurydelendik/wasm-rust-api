@@ -1,0 +1,3 @@
+[submodule "c-examples/wasm-c-api"]
+	path = c-examples/wasm-c-api
+	url = https://github.com/WebAssembly/wasm-c-api
