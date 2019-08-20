@@ -78,6 +78,8 @@ Options:
     --invoke=<fn>       name of function to run
     -o, --optimize      runs optimization passes on the translated functions
     -c, --cache         enable caching system
+    --cache-dir=<cache_dir>
+                        enable caching system, use specified cache directory
     -g                  generate debug information
     -d, --debug         enable debug output on stderr/stdout
     --enable-simd       enable proposed SIMD instructions
@@ -97,6 +99,7 @@ struct Args {
     arg_arg: Vec<String>,
     flag_optimize: bool,
     flag_cache: bool,
+    flag_cache_dir: Option<String>,
     flag_debug: bool,
     flag_g: bool,
     flag_enable_simd: bool,
@@ -214,7 +217,10 @@ fn main() {
         utils::init_file_per_thread_logger();
     }
 
-    cache_conf::init(args.flag_cache);
+    cache_conf::init(
+        args.flag_cache || args.flag_cache_dir.is_some(),
+        args.flag_cache_dir.as_ref(),
+    );
 
     let mut flag_builder = settings::builder();
     let mut features: Features = Default::default();
@@ -359,7 +365,11 @@ fn handle_module(
             match func.call(&[]) {
                 Ok(_) => {}
                 Err(trap) => {
-                    return Err(format!("Trap from within function {}: {}", f, trap));
+                    return Err(format!(
+                        "Trap from within function {}: {}",
+                        f,
+                        trap.borrow()
+                    ));
                 }
             }
         } else {
